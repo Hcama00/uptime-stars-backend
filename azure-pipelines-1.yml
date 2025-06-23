@@ -1,13 +1,15 @@
 trigger:
   branches:
     include:
-      - master  # ✅ Ejecutar solo en la rama 'master'
+      - master
 
 pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  PROJECT_NAME: 'uptimestars'
+  - group: SonarCloudSecrets  # Asegúrate de tener este grupo creado con las variables necesarias
+  - name: PROJECT_NAME
+    value: 'uptimestars'
 
 steps:
 
@@ -58,7 +60,7 @@ steps:
     codeCoverageTool: 'Cobertura'
     summaryFileLocation: '$(Build.ArtifactStagingDirectory)/TestResults/**/coverage.cobertura.xml'
 
-# 📤 Ejecutar análisis y publicar en SonarCloud
+# 📊 Ejecutar análisis y publicar en SonarCloud
 - task: SonarCloudAnalyze@1
   displayName: '📊 Ejecutar análisis SonarCloud'
 
@@ -67,7 +69,7 @@ steps:
   inputs:
     pollingTimeoutSec: '300'
 
-# 🚀 Build & Run Docker Compose
+# 🐳 Build & Run Docker Compose
 - task: DockerCompose@1
   displayName: '🚀 Build & Run Docker Compose'
   inputs:
@@ -83,13 +85,24 @@ steps:
     sleep 20
   displayName: 'Delay para servicios'
 
-# 🩺 Verificar API levantada
+# 🩺 Verificar endpoint /healthz
 - script: |
-    echo "🌐 Verificando acceso a la API en http://localhost:8080"
-    curl -sf http://localhost:8080 || (echo "❌ API no responde" && exit 1)
-  displayName: 'Verificar API levantada'
+    echo "🩺 Verificando /healthz desde el host (con reintentos)..."
+    for i in {1..10}; do
+      RESPONSE=$(curl -sf http://localhost:8080/healthz || true)
+      echo "Respuesta: $RESPONSE"
+      if echo "$RESPONSE" | grep -q '"status":"Healthy"'; then
+        echo "✅ API saludable desde el host"
+        exit 0
+      fi
+      echo "Intento $i: aún no saludable. Esperando 5 segundos..."
+      sleep 5
+    done
+    echo "❌ API no respondió correctamente a /healthz desde el host"
+    exit 1
+  displayName: 'Verificar endpoint /healthz desde host con curl'
 
-# 📄 Mostrar logs del contenedor API
+# 📄 Mostrar logs contenedor
 - script: |
     echo "📦 Contenedores activos:"
     docker ps -a
