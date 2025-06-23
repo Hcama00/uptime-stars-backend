@@ -20,7 +20,7 @@ steps:
   displayName: 'Build & run Docker Compose'
   inputs:
     containerregistrytype: 'Container Registry'
-    dockerComposeFile: '**/docker-compose.yml'
+    dockerComposeFile: 'Uptime.Stars.Backend/docker-compose.yml'
     action: 'Run services'
     projectName: '$(PROJECT_NAME)'
     buildImages: true
