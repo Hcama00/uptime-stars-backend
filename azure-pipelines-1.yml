@@ -1,7 +1,7 @@
 trigger:
   branches:
     include:
-      - master
+      - master  # ✅ Ejecutar solo en la rama 'master'
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -11,14 +11,29 @@ variables:
 
 steps:
 
-# 🔧 Instalar .NET 8 SDK
-- task: UseDotNet@2
-  displayName: '🔧 Instalar .NET 8 SDK'
-  inputs:
-    packageType: 'sdk'
-    version: '8.0.x'
+# ✅ Mostrar rama actual
+- script: |
+    echo "✅ Ejecutando en rama: $(Build.SourceBranch)"
+  displayName: 'Mostrar rama actual'
 
-# 🧪 Ejecutar pruebas unitarias con resultados y cobertura
+# 🔍 Diagnóstico inicial
+- script: |
+    echo "🔍 Verificando entorno y docker-compose.yml"
+    docker --version
+    find . -name "docker-compose.yml"
+  displayName: 'Diagnóstico inicial'
+
+# 🔎 Preparar análisis SonarCloud
+- task: SonarCloudPrepare@1
+  displayName: '🔎 Preparar análisis SonarCloud'
+  inputs:
+    SonarCloud: '$(SONAR_SERVICE_CONNECTION)'
+    organization: '$(SONAR_ORGANIZATION)'
+    scannerMode: 'MSBuild'
+    projectKey: '$(SONAR_PROJECT_KEY)'
+    projectName: '$(SONAR_PROJECT_NAME)'
+
+# 🧪 Ejecutar pruebas unitarias con cobertura
 - script: |
     echo "🧪 Ejecutando pruebas unitarias..."
     dotnet test Uptime.Stars.Backend/Uptime.Stars.UnitTests/Uptime.Stars.UnitTests.csproj \
@@ -28,7 +43,7 @@ steps:
       --collect:"XPlat Code Coverage"
   displayName: '🧪 Ejecutar pruebas unitarias'
 
-# 📊 Publicar resultados de pruebas (.trx)
+# 📊 Publicar resultados de pruebas
 - task: PublishTestResults@2
   displayName: '📊 Publicar resultados de pruebas'
   inputs:
@@ -36,34 +51,23 @@ steps:
     testResultsFiles: '$(Build.ArtifactStagingDirectory)/TestResults/*.trx'
     failTaskOnFailedTests: true
 
-# 📈 Publicar cobertura de código (versión 2)
+# 📈 Publicar cobertura de código
 - task: PublishCodeCoverageResults@2
   displayName: '📈 Publicar cobertura de código'
   inputs:
     codeCoverageTool: 'Cobertura'
     summaryFileLocation: '$(Build.ArtifactStagingDirectory)/TestResults/**/coverage.cobertura.xml'
 
-# 📦 Publicar artefactos: resultados + cobertura
-- task: PublishBuildArtifacts@1
-  displayName: '📦 Publicar artefactos'
+# 📤 Ejecutar análisis y publicar en SonarCloud
+- task: SonarCloudAnalyze@1
+  displayName: '📊 Ejecutar análisis SonarCloud'
+
+- task: SonarCloudPublish@1
+  displayName: '📤 Publicar resultados en SonarCloud'
   inputs:
-    PathtoPublish: '$(Build.ArtifactStagingDirectory)/TestResults'
-    ArtifactName: 'test-results'
-    publishLocation: 'Container'
+    pollingTimeoutSec: '300'
 
-# ✅ Verifica rama
-- script: |
-    echo "✅ Ejecutando pipeline en rama: $(Build.SourceBranch)"
-  displayName: 'Mostrar rama actual'
-
-# 🔍 Diagnóstico básico
-- script: |
-    echo "🔍 Diagnóstico inicial"
-    docker --version
-    find . -name "docker-compose.yml"
-  displayName: 'Verificar entorno y archivos'
-
-# 🚀 Ejecutar docker-compose
+# 🚀 Build & Run Docker Compose
 - task: DockerCompose@1
   displayName: '🚀 Build & Run Docker Compose'
   inputs:
@@ -73,24 +77,19 @@ steps:
     projectName: '$(PROJECT_NAME)'
     buildImages: true
 
-# 🩺 Verificar endpoint /healthz
+# ⏳ Esperar servicios
 - script: |
-    echo "🩺 Verificando /healthz desde el host (con reintentos)..."
-    for i in {1..10}; do
-      RESPONSE=$(curl -sf http://localhost:8080/healthz || true)
-      echo "Respuesta: $RESPONSE"
-      if echo "$RESPONSE" | grep -q '"status":"Healthy"'; then
-        echo "✅ API saludable desde el host"
-        exit 0
-      fi
-      echo "Intento $i: aún no saludable. Esperando 5 segundos..."
-      sleep 5
-    done
-    echo "❌ API no respondió correctamente a /healthz desde el host"
-    exit 1
-  displayName: 'Verificar endpoint /healthz desde host con curl'
+    echo "⏳ Esperando arranque de servicios..."
+    sleep 20
+  displayName: 'Delay para servicios'
 
-# 📄 Mostrar logs del contenedor
+# 🩺 Verificar API levantada
+- script: |
+    echo "🌐 Verificando acceso a la API en http://localhost:8080"
+    curl -sf http://localhost:8080 || (echo "❌ API no responde" && exit 1)
+  displayName: 'Verificar API levantada'
+
+# 📄 Mostrar logs del contenedor API
 - script: |
     echo "📦 Contenedores activos:"
     docker ps -a
