@@ -1,21 +1,22 @@
 trigger:
   branches:
     include:
-      - master  # o la rama principal que uses
+      - master
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: 'ubuntu-latest'  # ya trae Docker preinstalado
 
 variables:
-  PROJECT_NAME: 'uptime‑stars'  # útil evitar caracteres inválidos
+  PROJECT_NAME: 'uptimestars'
 
 steps:
 
-- task: DockerInstaller@0
-  inputs:
-    dockerVersion: 'latest'
+# 👇 Ya NO se necesita instalar Docker
 
-- task: DockerCompose@1   # usa versión 1 para compatibilidad con v2
+- script: docker --version
+  displayName: 'Verificar versión de Docker'
+
+- task: DockerCompose@1
   displayName: 'Build & run Docker Compose'
   inputs:
     containerregistrytype: 'Container Registry'
@@ -25,10 +26,10 @@ steps:
     buildImages: true
 
 - script: |
-    echo "Esperando que los servicios levanten..."
+    echo "Esperando que los servicios se inicien..."
     sleep 20
   displayName: 'Delay startup'
 
 - script: |
-    curl -sf http://localhost:8080/health || (echo "API no responde" && exit 1)
-  displayName: 'Check uptime.stars.api'
+    curl -sf http://localhost:8080 || (echo "API no responde" && exit 1)
+  displayName: 'Validar API'
