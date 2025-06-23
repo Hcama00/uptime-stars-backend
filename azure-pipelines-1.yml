@@ -1,7 +1,7 @@
 trigger:
   branches:
     include:
-      - master  # ✅ Ejecutar solo en la rama 'master'
+      - master  # El pipeline se ejecuta solo en 'master'
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -12,30 +12,38 @@ variables:
 steps:
 
 - script: |
-    echo "✅ Ejecutando en rama: $(Build.SourceBranch)"
-  displayName: 'Mostrar rama actual'
+    echo "✅ Rama activa: $(Build.SourceBranch)"
+  displayName: 'Mostrar rama activa'
 
 - script: |
-    echo "🔍 Verificando entorno y docker-compose.yml"
+    echo "🔍 Diagnóstico inicial"
     docker --version
     find . -name "docker-compose.yml"
-  displayName: 'Diagnóstico inicial'
+  displayName: 'Verificar entorno y archivos'
 
 - task: DockerCompose@1
   displayName: '🚀 Build & Run Docker Compose'
   inputs:
     containerregistrytype: 'Container Registry'
-    dockerComposeFile: 'Uptime.Stars.Backend/docker-compose.yml'  # ✅ Ruta correcta
+    dockerComposeFile: 'Uptime.Stars.Backend/docker-compose.yml'
     action: 'Run services'
     projectName: '$(PROJECT_NAME)'
     buildImages: true
 
 - script: |
-    echo "⏳ Esperando arranque de servicios..."
-    sleep 20
-  displayName: 'Delay para servicios'
+    echo "⏳ Esperando que la API se inicie con reintentos..."
+    for i in {1..10}; do
+      curl -sf http://localhost:8080 && echo "✅ API disponible" && exit 0
+      echo "Intento $i: API no responde aún. Esperando 5 segundos..."
+      sleep 5
+    done
+    echo "❌ API no disponible después de varios intentos."
+    exit 1
+  displayName: 'Verificar API levantada con reintentos'
 
 - script: |
-    echo "🌐 Verificando acceso a la API en http://localhost:8080"
-    curl -sf http://localhost:8080 || (echo "❌ API no responde" && exit 1)
-  displayName: 'Verificar API levantada'
+    echo "📦 Contenedores activos:"
+    docker ps -a
+    echo "📄 Logs del contenedor uptime.stars.api:"
+    docker logs $(docker ps -aqf "name=uptime.stars.api" || true)
+  displayName: 'Mostrar logs de contenedor API'
