@@ -47,3 +47,5 @@ steps:
     echo "📄 Logs del contenedor uptime.stars.api:"
     docker logs $(docker ps -aqf "name=uptime.stars.api" || true)
   displayName: 'Mostrar logs de contenedor API'
+  condition: always()  # ✅ Ejecutar sin importar errores anteriores
+
