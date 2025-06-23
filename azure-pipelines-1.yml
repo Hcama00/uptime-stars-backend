@@ -7,7 +7,7 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  - group: SonarCloudSecrets  # Asegúrate de tener este grupo creado con las variables necesarias
+  - group: SonarCloudSecrets
   - name: PROJECT_NAME
     value: 'uptimestars'
 
@@ -20,30 +20,37 @@ steps:
 
 # 🔍 Diagnóstico inicial
 - script: |
-    echo "🔍 Verificando entorno y docker-compose.yml"
+    echo "🔍 Verificando entorno"
     docker --version
-    find . -name "docker-compose.yml"
+    dotnet --version
   displayName: 'Diagnóstico inicial'
 
-# 🔎 Preparar análisis SonarCloud
-- task: SonarCloudPrepare@1
-  displayName: '🔎 Preparar análisis SonarCloud'
-  inputs:
-    SonarCloud: '$(SONAR_SERVICE_CONNECTION)'
-    organization: '$(SONAR_ORGANIZATION)'
-    scannerMode: 'MSBuild'
-    projectKey: '$(SONAR_PROJECT_KEY)'
-    projectName: '$(SONAR_PROJECT_NAME)'
-
-# 🧪 Ejecutar pruebas unitarias con cobertura
+# 🔧 Instalar SonarScanner
 - script: |
-    echo "🧪 Ejecutando pruebas unitarias..."
+    dotnet tool install --global dotnet-sonarscanner
+  displayName: 'Instalar SonarScanner'
+
+# 🟡 Iniciar análisis SonarCloud
+- script: |
+    export PATH="$PATH:/root/.dotnet/tools"
+    dotnet-sonarscanner begin /k:"$(SONAR_PROJECT_KEY)" /o:"$(SONAR_ORGANIZATION)" /d:sonar.token="$(SONAR_TOKEN)"
+  displayName: '🔎 Iniciar análisis SonarCloud'
+
+# 🧪 Ejecutar pruebas con cobertura
+- script: |
+    export PATH="$PATH:/root/.dotnet/tools"
     dotnet test Uptime.Stars.Backend/Uptime.Stars.UnitTests/Uptime.Stars.UnitTests.csproj \
       --configuration Release \
       --logger "trx;LogFileName=test-results.trx" \
       --results-directory "$(Build.ArtifactStagingDirectory)/TestResults" \
       --collect:"XPlat Code Coverage"
   displayName: '🧪 Ejecutar pruebas unitarias'
+
+# 🔵 Finalizar análisis SonarCloud
+- script: |
+    export PATH="$PATH:/root/.dotnet/tools"
+    dotnet-sonarscanner end /d:sonar.token="$(SONAR_TOKEN)"
+  displayName: '📤 Publicar análisis en SonarCloud'
 
 # 📊 Publicar resultados de pruebas
 - task: PublishTestResults@2
@@ -53,21 +60,12 @@ steps:
     testResultsFiles: '$(Build.ArtifactStagingDirectory)/TestResults/*.trx'
     failTaskOnFailedTests: true
 
-# 📈 Publicar cobertura de código
+# 📈 Publicar cobertura
 - task: PublishCodeCoverageResults@2
   displayName: '📈 Publicar cobertura de código'
   inputs:
     codeCoverageTool: 'Cobertura'
     summaryFileLocation: '$(Build.ArtifactStagingDirectory)/TestResults/**/coverage.cobertura.xml'
-
-# 📊 Ejecutar análisis y publicar en SonarCloud
-- task: SonarCloudAnalyze@1
-  displayName: '📊 Ejecutar análisis SonarCloud'
-
-- task: SonarCloudPublish@1
-  displayName: '📤 Publicar resultados en SonarCloud'
-  inputs:
-    pollingTimeoutSec: '300'
 
 # 🐳 Build & Run Docker Compose
 - task: DockerCompose@1
@@ -80,34 +78,17 @@ steps:
     buildImages: true
 
 # ⏳ Esperar servicios
-- script: |
-    echo "⏳ Esperando arranque de servicios..."
-    sleep 20
-  displayName: 'Delay para servicios'
+- script: sleep 20
+  displayName: '⏳ Delay para servicios'
 
-# 🩺 Verificar endpoint /healthz
+# 🔍 Verificar API
 - script: |
-    echo "🩺 Verificando /healthz desde el host (con reintentos)..."
-    for i in {1..10}; do
-      RESPONSE=$(curl -sf http://localhost:8080/healthz || true)
-      echo "Respuesta: $RESPONSE"
-      if echo "$RESPONSE" | grep -q '"status":"Healthy"'; then
-        echo "✅ API saludable desde el host"
-        exit 0
-      fi
-      echo "Intento $i: aún no saludable. Esperando 5 segundos..."
-      sleep 5
-    done
-    echo "❌ API no respondió correctamente a /healthz desde el host"
-    exit 1
-  displayName: 'Verificar endpoint /healthz desde host con curl'
+    curl -sf http://localhost:8080/healthz || (echo "❌ API no responde" && exit 1)
+  displayName: '🩺 Verificar API levantada'
 
-# 📄 Mostrar logs contenedor
+# 📄 Mostrar logs del contenedor
 - script: |
-    echo "📦 Contenedores activos:"
     docker ps -a
-
-    echo "📄 Logs del contenedor uptime.stars.api:"
     docker logs $(docker ps -aqf "name=uptime.stars.api" || true)
-  displayName: 'Mostrar logs de contenedor API'
+  displayName: '📄 Logs del contenedor API'
   condition: always()
