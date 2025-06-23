@@ -1,7 +1,7 @@
 trigger:
   branches:
     include:
-      - master  # El pipeline se ejecuta solo en 'master'
+      - master  # Ejecutar solo en la rama 'master'
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -12,8 +12,8 @@ variables:
 steps:
 
 - script: |
-    echo "✅ Rama activa: $(Build.SourceBranch)"
-  displayName: 'Mostrar rama activa'
+    echo "✅ Ejecutando en rama: $(Build.SourceBranch)"
+  displayName: 'Mostrar rama actual'
 
 - script: |
     echo "🔍 Diagnóstico inicial"
@@ -30,22 +30,29 @@ steps:
     projectName: '$(PROJECT_NAME)'
     buildImages: true
 
+# Verifica que el contenedor esté sirviendo desde adentro
 - script: |
-    echo "⏳ Esperando que la API se inicie con reintentos..."
+    echo "🔁 Verificando API desde el contenedor uptime.stars.api..."
     for i in {1..10}; do
-      curl -sf http://localhost:8080 && echo "✅ API disponible" && exit 0
-      echo "Intento $i: API no responde aún. Esperando 5 segundos..."
+      CONTAINER_ID=$(docker ps -qf "name=uptime.stars.api")
+      if [ -z "$CONTAINER_ID" ]; then
+        echo "❌ Contenedor uptime.stars.api no está en ejecución."
+        exit 1
+      fi
+      docker exec "$CONTAINER_ID" curl -sf http://localhost:8080 && echo "✅ API disponible" && exit 0
+      echo "Intento $i: API aún no responde. Esperando 5 segundos..."
       sleep 5
     done
-    echo "❌ API no disponible después de varios intentos."
+    echo "❌ API no respondió luego de múltiples intentos."
     exit 1
-  displayName: 'Verificar API levantada con reintentos'
+  displayName: 'Verificar API desde contenedor'
 
+# Mostrar logs siempre, aunque algo falle
 - script: |
     echo "📦 Contenedores activos:"
     docker ps -a
+
     echo "📄 Logs del contenedor uptime.stars.api:"
     docker logs $(docker ps -aqf "name=uptime.stars.api" || true)
   displayName: 'Mostrar logs de contenedor API'
-  condition: always()  # ✅ Ejecutar sin importar errores anteriores
-
+  condition: always()
