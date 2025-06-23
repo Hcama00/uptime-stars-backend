@@ -11,16 +11,50 @@ variables:
 
 steps:
 
+# 🔧 Instalar .NET 8 SDK
+- task: UseDotNet@2
+  displayName: '🔧 Instalar .NET 8 SDK'
+  inputs:
+    packageType: 'sdk'
+    version: '8.0.x'
+
+# 🧪 Ejecutar pruebas unitarias
+- task: DotNetCoreCLI@2
+  displayName: '🧪 Ejecutar pruebas unitarias'
+  inputs:
+    command: 'test'
+    projects: 'Uptime.Stars.Backend/Uptime.Stars.UnitTests/Uptime.Stars.UnitTests.csproj'
+    arguments: '--configuration Release --collect:"XPlat Code Coverage"'
+    publishTestResults: true
+
+# 📊 Publicar resultados de pruebas
+- task: PublishTestResults@2
+  displayName: '📊 Publicar resultados de pruebas'
+  inputs:
+    testResultsFormat: 'VSTest'
+    testResultsFiles: '**/TestResults/*.trx'
+    failTaskOnFailedTests: true
+
+# 📈 Publicar cobertura de código
+- task: PublishCodeCoverageResults@1
+  displayName: '📈 Publicar cobertura de código'
+  inputs:
+    codeCoverageTool: 'Cobertura'
+    summaryFileLocation: '$(Agent.TempDirectory)/**/coverage.cobertura.xml'
+
+# ✅ Verifica rama
 - script: |
     echo "✅ Ejecutando pipeline en rama: $(Build.SourceBranch)"
   displayName: 'Mostrar rama actual'
 
+# 🔍 Diagnóstico básico
 - script: |
     echo "🔍 Diagnóstico inicial"
     docker --version
     find . -name "docker-compose.yml"
   displayName: 'Verificar entorno y archivos'
 
+# 🚀 Ejecutar docker-compose
 - task: DockerCompose@1
   displayName: '🚀 Build & Run Docker Compose'
   inputs:
@@ -30,6 +64,7 @@ steps:
     projectName: '$(PROJECT_NAME)'
     buildImages: true
 
+# 🩺 Verificar endpoint /healthz
 - script: |
     echo "🩺 Verificando /healthz desde el host (con reintentos)..."
     for i in {1..10}; do
@@ -46,6 +81,7 @@ steps:
     exit 1
   displayName: 'Verificar endpoint /healthz desde host con curl'
 
+# 📄 Mostrar logs del contenedor
 - script: |
     echo "📦 Contenedores activos:"
     docker ps -a
