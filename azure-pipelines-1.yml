@@ -1,13 +1,16 @@
 trigger:
   branches:
     include:
-      - master  # ✅ Ejecutar solo en la rama 'master'
+      - master  # Ejecutar solo en rama 'master'
 
 pool:
   vmImage: 'ubuntu-latest'
 
 variables:
   PROJECT_NAME: 'uptimestars'
+  SONAR_ORGANIZATION: 'starsteam'
+  SONAR_PROJECT_KEY: 'starsteam_starsteam123'
+  SONAR_TOKEN: $(SONAR_TOKEN)  # ⚠️ Agrega esta variable como secreta en Azure DevOps
 
 steps:
 
@@ -23,25 +26,40 @@ steps:
     find . -name "docker-compose.yml"
   displayName: 'Diagnóstico inicial'
 
-# 🔎 Preparar análisis SonarCloud
-- task: SonarCloudPrepare@1
-  displayName: '🔎 Preparar análisis SonarCloud'
+# 🔧 Instalar .NET 8 SDK
+- task: UseDotNet@2
+  displayName: '🔧 Instalar .NET 8 SDK'
   inputs:
-    SonarCloud: '$(SONAR_SERVICE_CONNECTION)'
-    organization: '$(SONAR_ORGANIZATION)'
-    scannerMode: 'MSBuild'
-    projectKey: '$(SONAR_PROJECT_KEY)'
-    projectName: '$(SONAR_PROJECT_NAME)'
+    packageType: 'sdk'
+    version: '8.0.x'
+
+# 📥 Instalar SonarScanner CLI
+- script: |
+    dotnet tool install --global dotnet-sonarscanner
+  displayName: 'Instalar SonarScanner CLI'
+
+# 🔎 Iniciar análisis SonarCloud
+- script: |
+    dotnet sonarscanner begin \
+      /k:"$(SONAR_PROJECT_KEY)" \
+      /o:"$(SONAR_ORGANIZATION)" \
+      /d:sonar.token="$(SONAR_TOKEN)" \
+      /d:sonar.cs.opencover.reportsPaths="$(Build.ArtifactStagingDirectory)/TestResults/**/coverage.opencover.xml"
+  displayName: 'Iniciar análisis SonarCloud'
 
 # 🧪 Ejecutar pruebas unitarias con cobertura
 - script: |
-    echo "🧪 Ejecutando pruebas unitarias..."
     dotnet test Uptime.Stars.Backend/Uptime.Stars.UnitTests/Uptime.Stars.UnitTests.csproj \
       --configuration Release \
       --logger "trx;LogFileName=test-results.trx" \
       --results-directory "$(Build.ArtifactStagingDirectory)/TestResults" \
       --collect:"XPlat Code Coverage"
-  displayName: '🧪 Ejecutar pruebas unitarias'
+  displayName: 'Ejecutar pruebas unitarias'
+
+# 📤 Finalizar análisis SonarCloud
+- script: |
+    dotnet sonarscanner end /d:sonar.token="$(SONAR_TOKEN)"
+  displayName: 'Finalizar análisis SonarCloud'
 
 # 📊 Publicar resultados de pruebas
 - task: PublishTestResults@2
@@ -58,14 +76,13 @@ steps:
     codeCoverageTool: 'Cobertura'
     summaryFileLocation: '$(Build.ArtifactStagingDirectory)/TestResults/**/coverage.cobertura.xml'
 
-# 📤 Ejecutar análisis y publicar en SonarCloud
-- task: SonarCloudAnalyze@1
-  displayName: '📊 Ejecutar análisis SonarCloud'
-
-- task: SonarCloudPublish@1
-  displayName: '📤 Publicar resultados en SonarCloud'
+# 📦 Publicar artefactos: resultados de test
+- task: PublishBuildArtifacts@1
+  displayName: '📦 Publicar artefactos'
   inputs:
-    pollingTimeoutSec: '300'
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)/TestResults'
+    ArtifactName: 'test-results'
+    publishLocation: 'Container'
 
 # 🚀 Build & Run Docker Compose
 - task: DockerCompose@1
@@ -104,7 +121,6 @@ steps:
 - script: |
     echo "📦 Contenedores activos:"
     docker ps -a
-
     echo "📄 Logs del contenedor uptime.stars.api:"
     docker logs $(docker ps -aqf "name=uptime.stars.api" || true)
   displayName: 'Mostrar logs de contenedor API'
