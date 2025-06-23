@@ -18,29 +18,38 @@ steps:
     packageType: 'sdk'
     version: '8.0.x'
 
-# 🧪 Ejecutar pruebas unitarias
-- task: DotNetCoreCLI@2
+# 🧪 Ejecutar pruebas unitarias con resultados y cobertura
+- script: |
+    echo "🧪 Ejecutando pruebas unitarias..."
+    dotnet test Uptime.Stars.Backend/Uptime.Stars.UnitTests/Uptime.Stars.UnitTests.csproj \
+      --configuration Release \
+      --logger "trx;LogFileName=test-results.trx" \
+      --results-directory "$(Build.ArtifactStagingDirectory)/TestResults" \
+      --collect:"XPlat Code Coverage"
   displayName: '🧪 Ejecutar pruebas unitarias'
-  inputs:
-    command: 'test'
-    projects: 'Uptime.Stars.Backend/Uptime.Stars.UnitTests/Uptime.Stars.UnitTests.csproj'
-    arguments: '--configuration Release --collect:"XPlat Code Coverage"'
-    publishTestResults: true
 
-# 📊 Publicar resultados de pruebas
+# 📊 Publicar resultados de pruebas (.trx)
 - task: PublishTestResults@2
   displayName: '📊 Publicar resultados de pruebas'
   inputs:
     testResultsFormat: 'VSTest'
-    testResultsFiles: '**/TestResults/*.trx'
+    testResultsFiles: '$(Build.ArtifactStagingDirectory)/TestResults/*.trx'
     failTaskOnFailedTests: true
 
-# 📈 Publicar cobertura de código
-- task: PublishCodeCoverageResults@1
+# 📈 Publicar cobertura de código (versión 2)
+- task: PublishCodeCoverageResults@2
   displayName: '📈 Publicar cobertura de código'
   inputs:
     codeCoverageTool: 'Cobertura'
-    summaryFileLocation: '$(Agent.TempDirectory)/**/coverage.cobertura.xml'
+    summaryFileLocation: '$(Build.ArtifactStagingDirectory)/TestResults/**/coverage.cobertura.xml'
+
+# 📦 Publicar artefactos: resultados + cobertura
+- task: PublishBuildArtifacts@1
+  displayName: '📦 Publicar artefactos'
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)/TestResults'
+    ArtifactName: 'test-results'
+    publishLocation: 'Container'
 
 # ✅ Verifica rama
 - script: |
