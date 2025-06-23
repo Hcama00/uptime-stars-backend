@@ -1,30 +1,17 @@
 trigger:
   branches:
     include:
-      - master  # Ejecutar solo en rama 'master'
+      - master
 
 pool:
   vmImage: 'ubuntu-latest'
 
 variables:
   PROJECT_NAME: 'uptimestars'
-  SONAR_ORGANIZATION: 'starsteam'
   SONAR_PROJECT_KEY: 'starsteam_starsteam123'
-  SONAR_TOKEN: $(SONAR_TOKEN)  # ⚠️ Agrega esta variable como secreta en Azure DevOps
+  SONAR_ORGANIZATION: 'StarsTeam'
 
 steps:
-
-# ✅ Mostrar rama actual
-- script: |
-    echo "✅ Ejecutando en rama: $(Build.SourceBranch)"
-  displayName: 'Mostrar rama actual'
-
-# 🔍 Diagnóstico inicial
-- script: |
-    echo "🔍 Verificando entorno y docker-compose.yml"
-    docker --version
-    find . -name "docker-compose.yml"
-  displayName: 'Diagnóstico inicial'
 
 # 🔧 Instalar .NET 8 SDK
 - task: UseDotNet@2
@@ -33,33 +20,38 @@ steps:
     packageType: 'sdk'
     version: '8.0.x'
 
-# 📥 Instalar SonarScanner CLI
+# 🔎 Instalar dotnet-sonarscanner
 - script: |
     dotnet tool install --global dotnet-sonarscanner
-  displayName: 'Instalar SonarScanner CLI'
+  displayName: '🔎 Instalar SonarScanner .NET'
 
-# 🔎 Iniciar análisis SonarCloud
+# 🚀 Iniciar análisis SonarCloud
 - script: |
     dotnet sonarscanner begin \
       /k:"$(SONAR_PROJECT_KEY)" \
       /o:"$(SONAR_ORGANIZATION)" \
-      /d:sonar.token="$(SONAR_TOKEN)" \
+      /d:sonar.token="$SONAR_TOKEN" \
       /d:sonar.cs.opencover.reportsPaths="$(Build.ArtifactStagingDirectory)/TestResults/**/coverage.opencover.xml"
-  displayName: 'Iniciar análisis SonarCloud'
+  displayName: '🚀 Iniciar análisis SonarCloud'
+  env:
+    SONAR_TOKEN: $(SONAR_TOKEN)
 
 # 🧪 Ejecutar pruebas unitarias con cobertura
 - script: |
+    echo "🧪 Ejecutando pruebas unitarias..."
     dotnet test Uptime.Stars.Backend/Uptime.Stars.UnitTests/Uptime.Stars.UnitTests.csproj \
       --configuration Release \
       --logger "trx;LogFileName=test-results.trx" \
       --results-directory "$(Build.ArtifactStagingDirectory)/TestResults" \
       --collect:"XPlat Code Coverage"
-  displayName: 'Ejecutar pruebas unitarias'
+  displayName: '🧪 Ejecutar pruebas unitarias'
 
-# 📤 Finalizar análisis SonarCloud
+# 🧹 Finalizar análisis SonarCloud
 - script: |
-    dotnet sonarscanner end /d:sonar.token="$(SONAR_TOKEN)"
-  displayName: 'Finalizar análisis SonarCloud'
+    dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
+  displayName: '🧹 Finalizar análisis SonarCloud'
+  env:
+    SONAR_TOKEN: $(SONAR_TOKEN)
 
 # 📊 Publicar resultados de pruebas
 - task: PublishTestResults@2
@@ -76,7 +68,7 @@ steps:
     codeCoverageTool: 'Cobertura'
     summaryFileLocation: '$(Build.ArtifactStagingDirectory)/TestResults/**/coverage.cobertura.xml'
 
-# 📦 Publicar artefactos: resultados de test
+# 📦 Publicar artefactos: resultados + cobertura
 - task: PublishBuildArtifacts@1
   displayName: '📦 Publicar artefactos'
   inputs:
@@ -84,9 +76,21 @@ steps:
     ArtifactName: 'test-results'
     publishLocation: 'Container'
 
-# 🚀 Build & Run Docker Compose
+# ✅ Verificar rama
+- script: |
+    echo "✅ Ejecutando pipeline en rama: $(Build.SourceBranch)"
+  displayName: 'Mostrar rama actual'
+
+# 🔍 Diagnóstico básico
+- script: |
+    echo "🔍 Diagnóstico inicial"
+    docker --version
+    find . -name "docker-compose.yml"
+  displayName: 'Verificar entorno y archivos'
+
+# 🐳 Ejecutar docker-compose
 - task: DockerCompose@1
-  displayName: '🚀 Build & Run Docker Compose'
+  displayName: '🐳 Build & Run Docker Compose'
   inputs:
     containerregistrytype: 'Container Registry'
     dockerComposeFile: 'Uptime.Stars.Backend/docker-compose.yml'
@@ -102,25 +106,15 @@ steps:
 
 # 🩺 Verificar endpoint /healthz
 - script: |
-    echo "🩺 Verificando /healthz desde el host (con reintentos)..."
-    for i in {1..10}; do
-      RESPONSE=$(curl -sf http://localhost:8080/healthz || true)
-      echo "Respuesta: $RESPONSE"
-      if echo "$RESPONSE" | grep -q '"status":"Healthy"'; then
-        echo "✅ API saludable desde el host"
-        exit 0
-      fi
-      echo "Intento $i: aún no saludable. Esperando 5 segundos..."
-      sleep 5
-    done
-    echo "❌ API no respondió correctamente a /healthz desde el host"
-    exit 1
-  displayName: 'Verificar endpoint /healthz desde host con curl'
+    echo "🌐 Verificando acceso a la API en http://localhost:8080"
+    curl -sf http://localhost:8080/healthz || (echo "❌ API no responde" && exit 1)
+  displayName: 'Verificar endpoint /healthz'
 
-# 📄 Mostrar logs del contenedor API
+# 📄 Mostrar logs de contenedor
 - script: |
     echo "📦 Contenedores activos:"
     docker ps -a
+
     echo "📄 Logs del contenedor uptime.stars.api:"
     docker logs $(docker ps -aqf "name=uptime.stars.api" || true)
   displayName: 'Mostrar logs de contenedor API'
