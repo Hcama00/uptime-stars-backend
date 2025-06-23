@@ -1,35 +1,41 @@
 trigger:
   branches:
     include:
-      - master
+      - master  # ✅ Ejecutar solo en la rama 'master'
 
 pool:
-  vmImage: 'ubuntu-latest'  # ya trae Docker preinstalado
+  vmImage: 'ubuntu-latest'
 
 variables:
   PROJECT_NAME: 'uptimestars'
 
 steps:
 
-# 👇 Ya NO se necesita instalar Docker
+- script: |
+    echo "✅ Ejecutando en rama: $(Build.SourceBranch)"
+  displayName: 'Mostrar rama actual'
 
-- script: docker --version
-  displayName: 'Verificar versión de Docker'
+- script: |
+    echo "🔍 Verificando entorno y docker-compose.yml"
+    docker --version
+    find . -name "docker-compose.yml"
+  displayName: 'Diagnóstico inicial'
 
 - task: DockerCompose@1
-  displayName: 'Build & run Docker Compose'
+  displayName: '🚀 Build & Run Docker Compose'
   inputs:
     containerregistrytype: 'Container Registry'
-    dockerComposeFile: 'Uptime.Stars.Backend/docker-compose.yml'
+    dockerComposeFile: 'Uptime.Stars.Backend/docker-compose.yml'  # ✅ Ruta correcta
     action: 'Run services'
     projectName: '$(PROJECT_NAME)'
     buildImages: true
 
 - script: |
-    echo "Esperando que los servicios se inicien..."
+    echo "⏳ Esperando arranque de servicios..."
     sleep 20
-  displayName: 'Delay startup'
+  displayName: 'Delay para servicios'
 
 - script: |
-    curl -sf http://localhost:8080 || (echo "API no responde" && exit 1)
-  displayName: 'Validar API'
+    echo "🌐 Verificando acceso a la API en http://localhost:8080"
+    curl -sf http://localhost:8080 || (echo "❌ API no responde" && exit 1)
+  displayName: 'Verificar API levantada'
