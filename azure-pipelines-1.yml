@@ -31,21 +31,20 @@ steps:
     buildImages: true
 
 - script: |
-    echo "🔁 Verificando /healthz desde dentro del contenedor..."
-    CONTAINER_ID=$(docker ps -qf "name=uptime.stars.api")
+    echo "🩺 Verificando /healthz desde el host (con reintentos)..."
     for i in {1..10}; do
-      RESPONSE=$(docker exec "$CONTAINER_ID" wget -qO- http://localhost:8080/healthz || true)
+      RESPONSE=$(curl -sf http://localhost:8080/healthz || true)
       echo "Respuesta: $RESPONSE"
       if echo "$RESPONSE" | grep -q '"status":"Healthy"'; then
-        echo "✅ API saludable desde contenedor"
+        echo "✅ API saludable desde el host"
         exit 0
       fi
-      echo "Intento $i: aún no saludable. Esperando 5s..."
+      echo "Intento $i: aún no saludable. Esperando 5 segundos..."
       sleep 5
     done
-    echo "❌ API no respondió correctamente a /healthz dentro del contenedor"
+    echo "❌ API no respondió correctamente a /healthz desde el host"
     exit 1
-  displayName: 'Verificar endpoint /healthz desde contenedor'
+  displayName: 'Verificar endpoint /healthz desde host con curl'
 
 - script: |
     echo "📦 Contenedores activos:"
